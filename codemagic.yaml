@@ -7,12 +7,9 @@ workflows:
       flutter: stable
 
     scripts:
-      - name: Generate Android project
+      - name: Set up local.properties
         script: |
-          flutter create \
-            --platforms=android \
-            --project-name raja_enterprise_stock \
-            .
+          echo "flutter.sdk=$HOME/programs/flutter" > "$CM_BUILD_DIR/android/local.properties"
 
       - name: Get Flutter packages
         script: |
