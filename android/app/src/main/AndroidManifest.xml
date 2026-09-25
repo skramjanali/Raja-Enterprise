@@ -3,8 +3,9 @@
     <uses-permission android:name="android.permission.INTERNET"/>
 
     <application
-        android:label="RAJA ENTERPRISE"
-        android:name="${applicationName}">
+    android:label="RAJA ENTERPRISE"
+    android:name="${applicationName}"
+    android:icon="@drawable/raja_logo">
 
         <activity
             android:name=".MainActivity"
