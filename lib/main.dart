@@ -3019,17 +3019,195 @@ class _SaleDialogState extends State<SaleDialog> {
                           'Available Stock: ${selectedProduct!['stock'] ?? 0}',
                           style: const TextStyle(
                             color: AppColors.muted,
-                            fontSize: 11,
-                          ),
-                        ),
-                      ],
+// ============================================================
+// SALE DIALOG + BILLING
+// ============================================================
+
+class SaleDialog extends StatefulWidget {
+  const SaleDialog({super.key});
+
+  @override
+  State<SaleDialog> createState() => _SaleDialogState();
+}
+
+class _SaleDialogState extends State<SaleDialog> {
+  String? productId;
+  Map<String, dynamic>? selectedProduct;
+
+  final customerNameController = TextEditingController();
+  final customerPhoneController = TextEditingController();
+  final customerAddressController = TextEditingController();
+  final quantityController = TextEditingController(text: '1');
+
+  bool saving = false;
+
+  @override
+  void dispose() {
+    customerNameController.dispose();
+    customerPhoneController.dispose();
+    customerAddressController.dispose();
+    quantityController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.surface,
+      title: const Row(
+        children: [
+          Icon(
+            Icons.receipt_long,
+            color: AppColors.green,
+          ),
+          SizedBox(width: 10),
+          Text(
+            'New Sale',
+            style: TextStyle(
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+      content: SizedBox(
+        width: 430,
+        child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: FirestoreService.productsStream(),
+          builder: (context, snapshot) {
+            final docs = snapshot.data?.docs ?? [];
+
+            return SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: customerNameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Customer Name',
+                      prefixIcon: Icon(Icons.person_outline),
                     ),
                   ),
+
+                  const SizedBox(height: 12),
+
+                  TextField(
+                    controller: customerPhoneController,
+                    keyboardType: TextInputType.phone,
+                    decoration: const InputDecoration(
+                      labelText: 'Customer Mobile',
+                      prefixIcon: Icon(Icons.phone_outlined),
+                    ),
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  TextField(
+                    controller: customerAddressController,
+                    maxLines: 2,
+                    decoration: const InputDecoration(
+                      labelText: 'Customer Address',
+                      prefixIcon:
+                          Icon(Icons.location_on_outlined),
+                    ),
+                  ),
+
+                  const SizedBox(height: 14),
+
+                  DropdownButtonFormField<String>(
+                    value: productId,
+                    decoration: const InputDecoration(
+                      labelText: 'Select Product',
+                      prefixIcon:
+                          Icon(Icons.inventory_2_outlined),
+                    ),
+                    items: docs.map((doc) {
+                      final d = doc.data();
+
+                      final name =
+                          d['name']?.toString() ?? 'Product';
+
+                      final stock =
+                          (d['stock'] as num?)?.toInt() ?? 0;
+
+                      return DropdownMenuItem<String>(
+                        value: doc.id,
+                        child: Text(
+                          '$name ($stock)',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      );
+                    }).toList(),
+                    onChanged: (id) {
+                      setState(() {
+                        productId = id;
+
+                        if (id != null) {
+                          final doc = docs.firstWhere(
+                            (x) => x.id == id,
+                          );
+
+                          selectedProduct = doc.data();
+                        }
+                      });
+                    },
+                  ),
+
+                  const SizedBox(height: 14),
+
+                  TextField(
+                    controller: quantityController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Quantity',
+                      prefixIcon: Icon(Icons.numbers),
+                    ),
+                  ),
+
+                  if (selectedProduct != null) ...[
+                    const SizedBox(height: 14),
+
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: AppColors.green.withOpacity(.07),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: AppColors.green.withOpacity(.15),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment:
+                            CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Selling Price: ₹${_money(
+                              ((selectedProduct!['sellingPrice']
+                                          as num?) ??
+                                      0)
+                                  .toDouble(),
+                            )}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            'Available Stock: ${selectedProduct!['stock'] ?? 0}',
+                            style: const TextStyle(
+                              color: AppColors.muted,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
-              ],
-            ),
-          );
-        },
+              ),
+            );
+          },
+        ),
       ),
       actions: [
         TextButton(
@@ -3038,12 +3216,12 @@ class _SaleDialogState extends State<SaleDialog> {
               : () => Navigator.pop(context),
           child: const Text('Cancel'),
         ),
-        FilledButton(
+        FilledButton.icon(
           style: FilledButton.styleFrom(
             backgroundColor: AppColors.green,
           ),
           onPressed: saving ? null : _saveSale,
-          child: saving
+          icon: saving
               ? const SizedBox(
                   height: 18,
                   width: 18,
@@ -3051,45 +3229,53 @@ class _SaleDialogState extends State<SaleDialog> {
                     strokeWidth: 2,
                   ),
                 )
-              : const Text('Complete Sale'),
+              : const Icon(Icons.receipt_long),
+          label: Text(
+            saving ? 'Saving...' : 'Generate Bill',
+          ),
         ),
       ],
     );
   }
 
   Future<void> _saveSale() async {
-    if (productId == null ||
-        selectedProduct == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please select a product'),
-        ),
-      );
+    final customerName =
+        customerNameController.text.trim();
+
+    final customerPhone =
+        customerPhoneController.text.trim();
+
+    final customerAddress =
+        customerAddressController.text.trim();
+
+    if (customerName.isEmpty) {
+      _error('Enter customer name');
+      return;
+    }
+
+    if (customerPhone.isEmpty) {
+      _error('Enter customer mobile');
+      return;
+    }
+
+    if (productId == null || selectedProduct == null) {
+      _error('Please select a product');
       return;
     }
 
     final quantity =
-        int.tryParse(quantityController.text);
+        int.tryParse(quantityController.text.trim());
 
     if (quantity == null || quantity <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Enter valid quantity'),
-        ),
-      );
+      _error('Enter valid quantity');
       return;
     }
 
     final stock =
-        ((selectedProduct!['stock'] ?? 0) as num)
-            .toInt();
+        (selectedProduct!['stock'] as num?)?.toInt() ?? 0;
 
     if (quantity > stock) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Not enough stock'),
-        ),
-      );
+      _error('Not enough stock');
       return;
     }
 
@@ -3097,43 +3283,60 @@ class _SaleDialogState extends State<SaleDialog> {
 
     try {
       final selling =
-          ((selectedProduct!['sellingPrice'] ?? 0)
-                  as num)
+          ((selectedProduct!['sellingPrice'] as num?) ?? 0)
               .toDouble();
 
       final purchase =
-          ((selectedProduct!['purchasePrice'] ?? 0)
-                  as num)
+          ((selectedProduct!['purchasePrice'] as num?) ?? 0)
               .toDouble();
 
-      await FirestoreService.createSale(
+      final invoiceNo =
+          await FirestoreService.createSale(
         productId: productId!,
         productName:
-            selectedProduct!['name'] ?? 'Product',
+            selectedProduct!['name']?.toString() ?? 'Product',
         quantity: quantity,
         price: selling,
         purchasePrice: purchase,
+        customerName: customerName,
+        customerPhone: customerPhone,
+        customerAddress: customerAddress,
       );
 
-      if (mounted) {
-        Navigator.pop(context);
+      final total = selling * quantity;
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Sale completed successfully',
-            ),
+      final profit =
+          (selling - purchase) * quantity;
+
+      if (!mounted) return;
+
+      Navigator.pop(context);
+
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => BillPage(
+            invoiceNo: invoiceNo,
+            customerName: customerName,
+            customerPhone: customerPhone,
+            customerAddress: customerAddress,
+            productName:
+                selectedProduct!['name']?.toString() ??
+                    'Product',
+            quantity: quantity,
+            price: selling,
+            total: total,
+            profit: profit,
           ),
-        );
-      }
+        ),
+      );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Sale failed: $e',
-            ),
-          ),
+        _error(
+          'Sale failed: ${e.toString().replaceFirst(
+                'Exception: ',
+                '',
+              )}',
         );
       }
     } finally {
@@ -3142,8 +3345,424 @@ class _SaleDialogState extends State<SaleDialog> {
       }
     }
   }
+
+  void _error(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  static String _money(double value) {
+    if (value % 1 == 0) {
+      return value.toInt().toString();
+    }
+
+    return value.toStringAsFixed(2);
+  }
 }
 
+// ============================================================
+// BILL PAGE
+// ============================================================
+
+class BillPage extends StatelessWidget {
+  final String invoiceNo;
+  final String customerName;
+  final String customerPhone;
+  final String customerAddress;
+  final String productName;
+  final int quantity;
+  final double price;
+  final double total;
+  final double profit;
+
+  const BillPage({
+    super.key,
+    required this.invoiceNo,
+    required this.customerName,
+    required this.customerPhone,
+    required this.customerAddress,
+    required this.productName,
+    required this.quantity,
+    required this.price,
+    required this.total,
+    required this.profit,
+  });
+
+  String _money(double value) {
+    if (value % 1 == 0) {
+      return value.toInt().toString();
+    }
+
+    return value.toStringAsFixed(2);
+  }
+
+  String _dateText() {
+    final d = DateTime.now();
+
+    return '${d.day.toString().padLeft(2, '0')}/'
+        '${d.month.toString().padLeft(2, '0')}/'
+        '${d.year} '
+        '${d.hour.toString().padLeft(2, '0')}:'
+        '${d.minute.toString().padLeft(2, '0')}';
+  }
+
+  Future<Uint8List> _pdfBytes() async {
+    final pdf = pw.Document();
+
+    pdf.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(30),
+        build: (context) {
+          return pw.Column(
+            crossAxisAlignment:
+                pw.CrossAxisAlignment.start,
+            children: [
+              pw.Center(
+                child: pw.Text(
+                  'RAJA ENTERPRISE',
+                  style: pw.TextStyle(
+                    fontSize: 25,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+              ),
+
+              pw.SizedBox(height: 5),
+
+              pw.Center(
+                child: pw.Text(
+                  'SALES INVOICE',
+                  style: const pw.TextStyle(
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+
+              pw.SizedBox(height: 25),
+
+              pw.Row(
+                mainAxisAlignment:
+                    pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text(
+                    'Invoice: $invoiceNo',
+                    style: pw.TextStyle(
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                  ),
+                  pw.Text(_dateText()),
+                ],
+              ),
+
+              pw.SizedBox(height: 20),
+
+              pw.Container(
+                width: double.infinity,
+                padding: const pw.EdgeInsets.all(12),
+                decoration: pw.BoxDecoration(
+                  border: pw.Border.all(),
+                ),
+                child: pw.Column(
+                  crossAxisAlignment:
+                      pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      'CUSTOMER',
+                      style: pw.TextStyle(
+                        fontWeight: pw.FontWeight.bold,
+                      ),
+                    ),
+                    pw.SizedBox(height: 6),
+                    pw.Text(customerName),
+                    pw.Text(customerPhone),
+                    if (customerAddress.isNotEmpty)
+                      pw.Text(customerAddress),
+                  ],
+                ),
+              ),
+
+              pw.SizedBox(height: 25),
+
+              pw.Table.fromTextArray(
+                headers: const [
+                  'Product',
+                  'Qty',
+                  'Rate',
+                  'Amount',
+                ],
+                data: [
+                  [
+                    productName,
+                    quantity.toString(),
+                    'INR ${_money(price)}',
+                    'INR ${_money(total)}',
+                  ],
+                ],
+              ),
+
+              pw.SizedBox(height: 25),
+
+              pw.Align(
+                alignment: pw.Alignment.centerRight,
+                child: pw.Container(
+                  width: 230,
+                  padding: const pw.EdgeInsets.all(14),
+                  decoration: pw.BoxDecoration(
+                    border: pw.Border.all(),
+                  ),
+                  child: pw.Column(
+                    children: [
+                      pw.Row(
+                        mainAxisAlignment:
+                            pw.MainAxisAlignment.spaceBetween,
+                        children: [
+                          pw.Text('Subtotal'),
+                          pw.Text(
+                            'INR ${_money(total)}',
+                          ),
+                        ],
+                      ),
+
+                      pw.Divider(),
+
+                      pw.Row(
+                        mainAxisAlignment:
+                            pw.MainAxisAlignment.spaceBetween,
+                        children: [
+                          pw.Text(
+                            'GRAND TOTAL',
+                            style: pw.TextStyle(
+                              fontWeight:
+                                  pw.FontWeight.bold,
+                            ),
+                          ),
+                          pw.Text(
+                            'INR ${_money(total)}',
+                            style: pw.TextStyle(
+                              fontWeight:
+                                  pw.FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              pw.Spacer(),
+
+              pw.Center(
+                child: pw.Text(
+                  'Thank you for your business!',
+                ),
+              ),
+
+              pw.SizedBox(height: 5),
+
+              pw.Center(
+                child: pw.Text(
+                  'RAJA ENTERPRISE',
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    return pdf.save();
+  }
+
+  Future<void> _printBill() async {
+    final bytes = await _pdfBytes();
+
+    await Printing.layoutPdf(
+      onLayout: (_) async => bytes,
+    );
+  }
+
+  Future<void> _shareBill() async {
+    final bytes = await _pdfBytes();
+
+    await Printing.sharePdf(
+      bytes: bytes,
+      filename: '$invoiceNo.pdf',
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          'Invoice',
+          style: TextStyle(
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        actions: [
+          IconButton(
+            tooltip: 'Print',
+            onPressed: _printBill,
+            icon: const Icon(Icons.print),
+          ),
+          IconButton(
+            tooltip: 'Share',
+            onPressed: _shareBill,
+            icon: const Icon(Icons.share_outlined),
+          ),
+        ],
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Container(
+            padding: const EdgeInsets.all(22),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: AppColors.border,
+              ),
+            ),
+            child: Column(
+              children: [
+                const Icon(
+                  Icons.check_circle,
+                  color: AppColors.green,
+                  size: 55,
+                ),
+
+                const SizedBox(height: 10),
+
+                const Text(
+                  'SALE COMPLETED',
+                  style: TextStyle(
+                    color: AppColors.green,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1,
+                  ),
+                ),
+
+                const SizedBox(height: 20),
+
+                Text(
+                  invoiceNo,
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+
+                const SizedBox(height: 20),
+
+                _row('Customer', customerName),
+                _row('Mobile', customerPhone),
+
+                if (customerAddress.isNotEmpty)
+                  _row('Address', customerAddress),
+
+                const Divider(
+                  height: 28,
+                  color: AppColors.border,
+                ),
+
+                _row('Product', productName),
+
+                _row(
+                  'Quantity',
+                  quantity.toString(),
+                ),
+
+                _row(
+                  'Rate',
+                  '₹${_money(price)}',
+                ),
+
+                const Divider(
+                  height: 28,
+                  color: AppColors.border,
+                ),
+
+                _row(
+                  'TOTAL',
+                  '₹${_money(total)}',
+                  bold: true,
+                  color: AppColors.green,
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 18),
+
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: _printBill,
+                  icon: const Icon(Icons.print),
+                  label: const Text('Print Bill'),
+                ),
+              ),
+
+              const SizedBox(width: 12),
+
+              Expanded(
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.green,
+                  ),
+                  onPressed: _shareBill,
+                  icon: const Icon(Icons.share),
+                  label: const Text('Share'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _row(
+    String title,
+    String value, {
+    bool bold = false,
+    Color color = AppColors.text,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              title,
+              style: const TextStyle(
+                color: AppColors.muted,
+                fontSize: 12,
+              ),
+            ),
+          ),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                color: color,
+                fontWeight:
+                    bold ? FontWeight.w900 : FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 // ============================================================
 // STOCK PAGE
 // ============================================================
