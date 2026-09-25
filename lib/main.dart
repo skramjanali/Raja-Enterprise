@@ -1,7 +1,10 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
-
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
@@ -353,51 +356,54 @@ class FirestoreService {
   }
 
   static Future<void> createSale({
-    required String productId,
-    required String productName,
-    required int quantity,
-    required double price,
-    required double purchasePrice,
-  }) async {
-    await db.runTransaction((transaction) async {
-      final productRef = products.doc(productId);
-      final productSnapshot = await transaction.get(productRef);
+  
+  required String productId,
+  required String productName,
+  required int quantity,
+  required double price,
+  required double purchasePrice,
+}) async {
+  await db.runTransaction((transaction) async {
+    final productRef = products.doc(productId);
+    final productSnapshot = await transaction.get(productRef);
 
-      if (!productSnapshot.exists) {
-        throw Exception('Product not found');
-      }
+    if (!productSnapshot.exists) {
+      throw Exception('Product not found');
+    }
 
-      final data = productSnapshot.data()!;
-      final currentStock = (data['stock'] ?? 0 as num).toInt();
+    final data = productSnapshot.data()!;
 
-      if (currentStock < quantity) {
-        throw Exception('Not enough stock');
-      }
+    final currentStock =
+        (data['stock'] as num?)?.toInt() ?? 0;
 
-      final total = price * quantity;
-      final profit = (price - purchasePrice) * quantity;
+    if (currentStock < quantity) {
+      throw Exception('Not enough stock');
+    }
 
-      transaction.update(productRef, {
-        'stock': currentStock - quantity,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+    final total = price * quantity;
+    final profit = (price - purchasePrice) * quantity;
 
-      final saleRef = sales.doc();
-
-      transaction.set(saleRef, {
-        'productId': productId,
-        'productName': productName,
-        'quantity': quantity,
-        'price': price,
-        'purchasePrice': purchasePrice,
-        'total': total,
-        'profit': profit,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
+    // Reduce stock
+    transaction.update(productRef, {
+      'stock': currentStock - quantity,
+      'updatedAt': FieldValue.serverTimestamp(),
     });
-  }
-}
 
+    // Create sale record
+    final saleRef = sales.doc();
+
+    transaction.set(saleRef, {
+      'productId': productId,
+      'productName': productName,
+      'quantity': quantity,
+      'price': price,
+      'purchasePrice': purchasePrice,
+      'total': total,
+      'profit': profit,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+  });
+}
 // ============================================================
 // MAIN PAGE
 // ============================================================
