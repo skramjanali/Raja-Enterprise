@@ -2168,24 +2168,25 @@ class SalesPage
                 ),
               ),
               SliverToBoxAdapter(
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: saleBox(
-                        'Revenue',
-                        '₹${money(revenue)}',
-                        AppColors.green,
-                      ),
-                    ),
-                    Expanded(
-                      child: saleBox(
-                        'Profit',
-                        '₹${money(profit)}',
-                        AppColors.primary,
-                      ),
-                  ],
-                ),
-              ),
+  child: Row(
+    children: [
+      Expanded(
+        child: saleBox(
+          'Revenue',
+          '₹${money(revenue)}',
+          AppColors.green,
+        ),
+      ),
+      Expanded(
+        child: saleBox(
+          'Profit',
+          '₹${money(profit)}',
+          AppColors.primary,
+        ),
+      ),
+    ],
+  ),
+),
               if (docs.isEmpty)
                 const SliverToBoxAdapter(
                   child:
