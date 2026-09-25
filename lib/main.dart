@@ -500,14 +500,10 @@ class DashboardPage extends StatelessWidget {
               for (final doc in products) {
                 final d = doc.data();
 
-                final stock =
-                    (d['stock'] ?? 0 as num).toInt();
+                final stock = (d['stock'] as num?)?.toInt() ?? 0;
 
-                final purchase =
-                    (d['purchasePrice'] ?? 0 as num).toDouble();
-
-                final minStock =
-                    (d['minStock'] ?? 0 as num).toInt();
+                final purchase = (d['purchasePrice'] as num?)?.toDouble() ?? 0;
+                final minStock = (d['minStock'] as num?)?.toInt() ?? 0;
 
                 totalStock += stock;
                 stockValue += stock * purchase;
@@ -520,11 +516,8 @@ class DashboardPage extends StatelessWidget {
               for (final doc in sales) {
                 final d = doc.data();
 
-                final total =
-                    (d['total'] ?? 0 as num).toDouble();
-
-                final profit =
-                    (d['profit'] ?? 0 as num).toDouble();
+                final total = (d['total'] as num?)?.toDouble() ?? 0;
+                final profit = (d['profit'] as num?)?.toDouble() ?? 0;
 
                 totalProfit += profit;
 
