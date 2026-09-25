@@ -11,6 +11,28 @@ workflows:
         script: |
           echo "flutter.sdk=$HOME/programs/flutter" > "$CM_BUILD_DIR/android/local.properties"
 
+      - name: Generate Gradle wrapper
+        script: |
+          rm -rf /tmp/raja_android_template
+
+          flutter create \
+            --platforms=android \
+            --project-name raja_enterprise_stock \
+            /tmp/raja_android_template
+
+          cp /tmp/raja_android_template/android/gradlew \
+            "$CM_BUILD_DIR/android/gradlew"
+
+          cp /tmp/raja_android_template/android/gradlew.bat \
+            "$CM_BUILD_DIR/android/gradlew.bat"
+
+          rm -rf "$CM_BUILD_DIR/android/gradle"
+
+          cp -R /tmp/raja_android_template/android/gradle \
+            "$CM_BUILD_DIR/android/gradle"
+
+          chmod +x "$CM_BUILD_DIR/android/gradlew"
+
       - name: Get Flutter packages
         script: |
           flutter pub get
