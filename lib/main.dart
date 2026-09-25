@@ -62,11 +62,207 @@ class RajaEnterpriseApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const MainPage(),
+      home: const SplashPage(),
     );
   }
 }
+// ============================================================
+// PREMIUM SPLASH SCREEN
+// ============================================================
 
+class SplashPage extends StatefulWidget {
+  const SplashPage({super.key});
+
+  @override
+  State<SplashPage> createState() => _SplashPageState();
+}
+
+class _SplashPageState extends State<SplashPage>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scale;
+  late Animation<double> _fade;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    );
+
+    _scale = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOutBack,
+    );
+
+    _fade = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeIn,
+    );
+
+    _controller.forward();
+
+    Future.delayed(
+      const Duration(milliseconds: 2600),
+      () {
+        if (!mounted) return;
+
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const MainPage(),
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF050509),
+      body: Stack(
+        children: [
+          Positioned(
+            top: -120,
+            left: -80,
+            child: Container(
+              height: 300,
+              width: 300,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFFFF0000)
+                    .withOpacity(.12),
+              ),
+            ),
+          ),
+
+          Positioned(
+            bottom: -140,
+            right: -80,
+            child: Container(
+              height: 320,
+              width: 320,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF7C5CFF)
+                    .withOpacity(.10),
+              ),
+            ),
+          ),
+
+          Center(
+            child: AnimatedBuilder(
+              animation: _controller,
+              builder: (context, child) {
+                return FadeTransition(
+                  opacity: _fade,
+                  child: ScaleTransition(
+                    scale: _scale,
+                    child: child,
+                  ),
+                );
+              },
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    height: 190,
+                    width: 190,
+                    padding: const EdgeInsets.all(5),
+                    decoration: BoxDecoration(
+                      borderRadius:
+                          BorderRadius.circular(48),
+                      border: Border.all(
+                        color: const Color(0xFFFF2020)
+                            .withOpacity(.65),
+                        width: 2,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFFFF0000)
+                              .withOpacity(.25),
+                          blurRadius: 35,
+                          spreadRadius: 5,
+                        ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius:
+                          BorderRadius.circular(43),
+                      child: Image.asset(
+                        'assets/images/raja_logo.png',
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 28),
+
+                  const Text(
+                    'RAJA ENTERPRISE',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 27,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 2.5,
+                    ),
+                  ),
+
+                  const SizedBox(height: 8),
+
+                  const Text(
+                    'PREMIUM BUSINESS MANAGER',
+                    style: TextStyle(
+                      color: Color(0xFFFFC857),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 2.2,
+                    ),
+                  ),
+
+                  const SizedBox(height: 35),
+
+                  const SizedBox(
+                    width: 30,
+                    height: 30,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Color(0xFFFF3B3B),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          const Positioned(
+            bottom: 35,
+            left: 0,
+            right: 0,
+            child: Text(
+              'POWERED BY RAJA ENTERPRISE',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Color(0xFF667085),
+                fontSize: 9,
+                letterSpacing: 1.5,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 // ============================================================
 // FIRESTORE SERVICE
 // ============================================================
