@@ -482,10 +482,15 @@ class DashboardPage extends StatelessWidget {
                 ),
               ],
             ),
-            child: const Icon(
-              Icons.storefront,
-              color: Colors.white,
-            ),
+            child: ClipRRect(
+  borderRadius: BorderRadius.circular(14),
+  child: Image.asset(
+    'assets/images/raja_logo.png',
+    width: 48,
+    height: 48,
+    fit: BoxFit.cover,
+  ),
+),
           ),
           const SizedBox(width: 12),
           const Expanded(
