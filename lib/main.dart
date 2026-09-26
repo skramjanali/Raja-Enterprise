@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' as services;
 import 'package:pdf/pdf.dart';
@@ -440,6 +441,25 @@ class FirestoreService {
     );
 
     return invoiceNo;
+  }
+
+  static Future<void> updateSalePdfUrl({
+    required String invoiceNo,
+    required String pdfUrl,
+  }) async {
+    final snap = await sales
+        .where('invoiceNo', isEqualTo: invoiceNo)
+        .limit(1)
+        .get();
+
+    if (snap.docs.isEmpty) {
+      throw Exception('Sale invoice not found');
+    }
+
+    await snap.docs.first.reference.update({
+      'pdfUrl': pdfUrl,
+      'pdfUploadedAt': FieldValue.serverTimestamp(),
+    });
   }
 }
 
@@ -2755,7 +2775,7 @@ class _SaleDialogState
 // BILL PAGE — COLOUR CARNIVAL INVOICE
 // ============================================================
 
-class BillPage extends StatelessWidget {
+class BillPage extends StatefulWidget {
   final String invoiceNo;
   final String customerName;
   final String customerPhone;
@@ -2786,6 +2806,77 @@ class BillPage extends StatelessWidget {
   static const Color carnivalGreen = Color(0xFF00C853);
 
   @override
+  State<BillPage> createState() => _BillPageState();
+}
+
+class _BillPageState extends State<BillPage> {
+  bool _uploading = false;
+  bool _uploaded = false;
+  String? _uploadError;
+  String? _pdfUrl;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _autoUpload());
+  }
+
+  Future<void> _autoUpload() async {
+    if (_uploading || _uploaded) return;
+
+    setState(() {
+      _uploading = true;
+      _uploadError = null;
+    });
+
+    try {
+      final bytes = await pdfBytes();
+      final ref = FirebaseStorage.instance
+          .ref()
+          .child('invoices')
+          .child('${widget.invoiceNo}.pdf');
+
+      await ref.putData(
+        bytes,
+        SettableMetadata(
+          contentType: 'application/pdf',
+          customMetadata: {
+            'invoiceNo': widget.invoiceNo,
+            'customerName': widget.customerName,
+          },
+        ),
+      );
+
+      final url = await ref.getDownloadURL();
+
+      await FirestoreService.updateSalePdfUrl(
+        invoiceNo: widget.invoiceNo,
+        pdfUrl: url,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _uploaded = true;
+        _uploading = false;
+        _pdfUrl = url;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Bill uploaded automatically ✓'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _uploading = false;
+        _uploadError = e.toString();
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final dateText = _dateText();
 
@@ -2796,18 +2887,16 @@ class BillPage extends StatelessWidget {
           'Colour Carnival Invoice',
           style: TextStyle(fontWeight: FontWeight.w900),
         ),
-        backgroundColor: carnivalPurple,
+        backgroundColor: BillPage.carnivalPurple,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
             onPressed: printBill,
             icon: const Icon(Icons.print_rounded),
-            tooltip: 'Print',
           ),
           IconButton(
             onPressed: shareBill,
             icon: const Icon(Icons.share_rounded),
-            tooltip: 'Share PDF',
           ),
         ],
       ),
@@ -2820,7 +2909,7 @@ class BillPage extends StatelessWidget {
               borderRadius: BorderRadius.circular(28),
               boxShadow: [
                 BoxShadow(
-                  color: carnivalPurple.withOpacity(.14),
+                  color: BillPage.carnivalPurple.withOpacity(.14),
                   blurRadius: 24,
                   offset: const Offset(0, 10),
                 ),
@@ -2833,12 +2922,10 @@ class BillPage extends StatelessWidget {
                   decoration: const BoxDecoration(
                     gradient: LinearGradient(
                       colors: [
-                        carnivalPurple,
-                        carnivalPink,
-                        carnivalOrange,
+                        BillPage.carnivalPurple,
+                        BillPage.carnivalPink,
+                        BillPage.carnivalOrange,
                       ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
                     ),
                     borderRadius: BorderRadius.vertical(
                       top: Radius.circular(28),
@@ -2861,7 +2948,7 @@ class BillPage extends StatelessWidget {
                             fit: BoxFit.cover,
                             errorBuilder: (_, __, ___) => const Icon(
                               Icons.storefront_rounded,
-                              color: carnivalPurple,
+                              color: BillPage.carnivalPurple,
                               size: 34,
                             ),
                           ),
@@ -2878,7 +2965,6 @@ class BillPage extends StatelessWidget {
                                 color: Colors.white,
                                 fontSize: 21,
                                 fontWeight: FontWeight.w900,
-                                letterSpacing: 1.1,
                               ),
                             ),
                             SizedBox(height: 3),
@@ -2888,7 +2974,6 @@ class BillPage extends StatelessWidget {
                                 color: Colors.white70,
                                 fontSize: 10,
                                 fontWeight: FontWeight.w800,
-                                letterSpacing: .8,
                               ),
                             ),
                           ],
@@ -2901,122 +2986,88 @@ class BillPage extends StatelessWidget {
                   padding: const EdgeInsets.all(20),
                   child: Column(
                     children: [
+                      const Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Nill, Narayanpur, Chinpai, Birbhum-731104',
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      const Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'GSTIN/UIN: 19AEIPM6807P2ZP  •  State: West Bengal, Code: 19',
+                          style: TextStyle(fontSize: 10, color: Colors.black54),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
                       Row(
                         children: [
-                          Expanded(
-                            child: _invoiceChip(
-                              'INVOICE',
-                              invoiceNo,
-                              carnivalPurple,
-                            ),
-                          ),
+                          Expanded(child: _invoiceChip('INVOICE', widget.invoiceNo, BillPage.carnivalPurple)),
                           const SizedBox(width: 10),
-                          Expanded(
-                            child: _invoiceChip(
-                              'DATE',
-                              dateText,
-                              carnivalOrange,
-                            ),
-                          ),
+                          Expanded(child: _invoiceChip('DATE', dateText, BillPage.carnivalOrange)),
                         ],
                       ),
                       const SizedBox(height: 16),
                       _sectionBox(
                         title: 'CUSTOMER',
-                        color: carnivalBlue,
+                        color: BillPage.carnivalBlue,
                         child: Column(
                           children: [
-                            billRow(
-                              'Name',
-                              customerName,
-                              color: const Color(0xFF202124),
-                            ),
-                            billRow(
-                              'Mobile',
-                              customerPhone,
-                              color: const Color(0xFF202124),
-                            ),
-                            if (customerAddress.isNotEmpty)
-                              billRow(
-                                'Address',
-                                customerAddress,
-                                color: const Color(0xFF202124),
-                              ),
+                            billRow('Name', widget.customerName),
+                            billRow('Phone', widget.customerPhone),
+                            if (widget.customerAddress.isNotEmpty)
+                              billRow('Address', widget.customerAddress),
                           ],
                         ),
                       ),
                       const SizedBox(height: 14),
                       _sectionBox(
-                        title: 'ITEM DETAILS',
-                        color: carnivalPink,
+                        title: 'PRODUCT',
+                        color: BillPage.carnivalPink,
                         child: Column(
                           children: [
-                            billRow(
-                              'Product',
-                              productName,
-                              color: const Color(0xFF202124),
-                            ),
-                            billRow(
-                              'Quantity',
-                              '$quantity',
-                              color: const Color(0xFF202124),
-                            ),
-                            billRow(
-                              'Rate',
-                              '₹${money(price)}',
-                              color: const Color(0xFF202124),
-                            ),
+                            billRow('Product', widget.productName),
+                            billRow('Quantity', '${widget.quantity}'),
+                            billRow('Rate', '₹${money(widget.price)}'),
+                            billRow('Amount', '₹${money(widget.total)}', color: BillPage.carnivalGreen),
                           ],
                         ),
                       ),
-                      const SizedBox(height: 16),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(18),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              carnivalGreen.withOpacity(.12),
-                              carnivalBlue.withOpacity(.08),
+                      const SizedBox(height: 14),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Container(
+                          width: 260,
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF0FFF7),
+                            border: Border.all(color: BillPage.carnivalGreen),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Column(
+                            children: [
+                              _totalRow('Subtotal', '₹${money(widget.total)}'),
+                              const Divider(),
+                              _totalRow('GRAND TOTAL', '₹${money(widget.total)}', bold: true),
                             ],
                           ),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: carnivalGreen.withOpacity(.25),
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            const Expanded(
-                              child: Text(
-                                'GRAND TOTAL',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                            ),
-                            Text(
-                              '₹${money(total)}',
-                              style: const TextStyle(
-                                color: carnivalGreen,
-                                fontSize: 25,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                          ],
                         ),
                       ),
+                      const SizedBox(height: 18),
+                      _uploadStatus(),
                       const SizedBox(height: 18),
                       const Text(
                         'Thank you for your business! 🎉',
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                          color: carnivalPurple,
+                          color: BillPage.carnivalPurple,
                           fontWeight: FontWeight.w900,
                           fontSize: 15,
                         ),
                       ),
+                      const SizedBox(height: 4),
+                      const Text('RAJA ENTERPRISE'),
                     ],
                   ),
                 ),
@@ -3030,7 +3081,7 @@ class BillPage extends StatelessWidget {
                 child: FilledButton.icon(
                   onPressed: printBill,
                   style: FilledButton.styleFrom(
-                    backgroundColor: carnivalPurple,
+                    backgroundColor: BillPage.carnivalPurple,
                     minimumSize: const Size.fromHeight(52),
                   ),
                   icon: const Icon(Icons.print_rounded),
@@ -3042,7 +3093,7 @@ class BillPage extends StatelessWidget {
                 child: FilledButton.icon(
                   onPressed: shareBill,
                   style: FilledButton.styleFrom(
-                    backgroundColor: carnivalPink,
+                    backgroundColor: BillPage.carnivalPink,
                     minimumSize: const Size.fromHeight(52),
                   ),
                   icon: const Icon(Icons.share_rounded),
@@ -3055,6 +3106,72 @@ class BillPage extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Widget _uploadStatus() {
+    if (_uploading) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: BillPage.carnivalPurple.withOpacity(.08),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: const Row(
+          children: [
+            SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            SizedBox(width: 10),
+            Expanded(child: Text('Uploading bill automatically...')),
+          ],
+        ),
+      );
+    }
+
+    if (_uploaded) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: BillPage.carnivalGreen.withOpacity(.08),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: BillPage.carnivalGreen.withOpacity(.3)),
+        ),
+        child: const Row(
+          children: [
+            Icon(Icons.cloud_done_rounded, color: BillPage.carnivalGreen),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Bill uploaded to cloud ✓\nStock updated automatically ✓',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_uploadError != null) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.red.withOpacity(.06),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.cloud_off_rounded, color: Colors.red),
+            const SizedBox(width: 8),
+            const Expanded(child: Text('Auto upload failed.')),
+            TextButton(onPressed: _autoUpload, child: const Text('Retry')),
+          ],
+        ),
+      );
+    }
+
+    return const SizedBox.shrink();
   }
 
   String _dateText() {
@@ -3074,36 +3191,16 @@ class BillPage extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: TextStyle(
-              color: color,
-              fontSize: 9,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 1,
-            ),
-          ),
+          Text(title, style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.w900)),
           const SizedBox(height: 4),
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Color(0xFF202124),
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
+          Text(value, maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
         ],
       ),
     );
   }
 
-  Widget _sectionBox({
-    required String title,
-    required Color color,
-    required Widget child,
-  }) {
+  Widget _sectionBox({required String title, required Color color, required Widget child}) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(14),
@@ -3114,28 +3211,11 @@ class BillPage extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Row(
-            children: [
-              Container(
-                width: 8,
-                height: 22,
-                decoration: BoxDecoration(
-                  color: color,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-              const SizedBox(width: 9),
-              Text(
-                title,
-                style: TextStyle(
-                  color: color,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: .8,
-                ),
-              ),
-            ],
-          ),
+          Row(children: [
+            Container(width: 8, height: 22, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(8))),
+            const SizedBox(width: 9),
+            Text(title, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w900)),
+          ]),
           const SizedBox(height: 7),
           child,
         ],
@@ -3143,53 +3223,36 @@ class BillPage extends StatelessWidget {
     );
   }
 
-  Widget billRow(
-    String title,
-    String value, {
-    Color color = const Color(0xFF202124),
-  }) {
+  Widget billRow(String title, String value, {Color color = const Color(0xFF202124)}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Text(
-              title,
-              style: const TextStyle(
-                color: Color(0xFF7A7F87),
-                fontSize: 11,
-              ),
-            ),
-          ),
-          Flexible(
-            child: Text(
-              value,
-              textAlign: TextAlign.right,
-              style: TextStyle(
-                color: color,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
+          Expanded(child: Text(title, style: const TextStyle(color: Color(0xFF7A7F87), fontSize: 11))),
+          Flexible(child: Text(value, textAlign: TextAlign.right, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w700))),
         ],
       ),
     );
   }
 
+  Widget _totalRow(String label, String value, {bool bold = false}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: TextStyle(fontWeight: bold ? FontWeight.w900 : FontWeight.w500)),
+        Text(value, style: TextStyle(color: BillPage.carnivalGreen, fontSize: bold ? 18 : 13, fontWeight: FontWeight.w900)),
+      ],
+    );
+  }
+
   Future<Uint8List> pdfBytes() async {
     final pdf = pw.Document();
-
     pw.MemoryImage? logo;
     try {
-      final data = await services.rootBundle.load(
-        'assets/images/raja_logo.png',
-      );
+      final data = await services.rootBundle.load('assets/images/raja_logo.png');
       logo = pw.MemoryImage(data.buffer.asUint8List());
-    } catch (_) {
-      logo = null;
-    }
+    } catch (_) {}
 
     final now = DateTime.now();
     String two(int n) => n.toString().padLeft(2, '0');
@@ -3200,204 +3263,94 @@ class BillPage extends StatelessWidget {
       pw.Page(
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.all(24),
-        build: (_) {
-          return pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              pw.Container(
-                padding: const pw.EdgeInsets.all(18),
-                decoration: const pw.BoxDecoration(
-                  gradient: pw.LinearGradient(
-                    colors: [
-                      PdfColor.fromInt(0xFF7C4DFF),
-                      PdfColor.fromInt(0xFFFF3D81),
-                      PdfColor.fromInt(0xFFFF9800),
-                    ],
-                  ),
-                ),
-                child: pw.Row(
-                  children: [
-                    if (logo != null)
-                      pw.Container(
-                        width: 52,
-                        height: 52,
-                        padding: const pw.EdgeInsets.all(4),
-                        color: PdfColors.white,
-                        child: pw.Image(logo!, fit: pw.BoxFit.cover),
-                      ),
-                    if (logo != null) pw.SizedBox(width: 12),
-                    pw.Expanded(
-                      child: pw.Column(
-                        crossAxisAlignment: pw.CrossAxisAlignment.start,
-                        children: [
-                          pw.Text(
-                            'RAJA ENTERPRISE',
-                            style: pw.TextStyle(
-                              color: PdfColors.white,
-                              fontSize: 22,
-                              fontWeight: pw.FontWeight.bold,
-                            ),
-                          ),
-                          pw.SizedBox(height: 4),
-                          pw.Text(
-                            'COLOUR CARNIVAL • SALES INVOICE',
-                            style: const pw.TextStyle(
-                              color: PdfColors.white,
-                              fontSize: 9,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+        build: (_) => pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Container(
+              padding: const pw.EdgeInsets.all(16),
+              decoration: const pw.BoxDecoration(
+                gradient: pw.LinearGradient(colors: [
+                  PdfColor.fromInt(0xFF7C4DFF),
+                  PdfColor.fromInt(0xFFFF3D81),
+                  PdfColor.fromInt(0xFFFF9800),
+                ]),
               ),
-              pw.SizedBox(height: 16),
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Text(
-                    'Invoice: $invoiceNo',
-                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-                  ),
-                  pw.Text('$dateText  $timeText'),
-                ],
+              child: pw.Row(children: [
+                if (logo != null)
+                  pw.Container(width: 50, height: 50, padding: const pw.EdgeInsets.all(4), color: PdfColors.white, child: pw.Image(logo!, fit: pw.BoxFit.cover)),
+                if (logo != null) pw.SizedBox(width: 12),
+                pw.Expanded(child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+                  pw.Text('RAJA ENTERPRISE', style: pw.TextStyle(color: PdfColors.white, fontSize: 21, fontWeight: pw.FontWeight.bold)),
+                  pw.SizedBox(height: 3),
+                  pw.Text('COLOUR CARNIVAL • SALES INVOICE', style: const pw.TextStyle(color: PdfColors.white, fontSize: 8)),
+                ])),
+              ]),
+            ),
+            pw.SizedBox(height: 12),
+            pw.Text('Nill, Narayanpur, Chinpai, Birbhum-731104', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
+            pw.Text('GSTIN/UIN: 19AEIPM6807P2ZP   State Name: West Bengal, Code: 19', style: const pw.TextStyle(fontSize: 8)),
+            pw.SizedBox(height: 12),
+            pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
+              pw.Text('Invoice: ${widget.invoiceNo}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+              pw.Text('$dateText  $timeText'),
+            ]),
+            pw.SizedBox(height: 12),
+            pw.Container(
+              width: double.infinity,
+              padding: const pw.EdgeInsets.all(12),
+              decoration: pw.BoxDecoration(color: const PdfColor.fromInt(0xFFF3F0FF), border: pw.Border.all(color: const PdfColor.fromInt(0xFF7C4DFF))),
+              child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+                pw.Text('CUSTOMER', style: pw.TextStyle(color: const PdfColor.fromInt(0xFF7C4DFF), fontWeight: pw.FontWeight.bold)),
+                pw.SizedBox(height: 5),
+                pw.Text(widget.customerName),
+                pw.Text(widget.customerPhone),
+                if (widget.customerAddress.isNotEmpty) pw.Text(widget.customerAddress),
+              ]),
+            ),
+            pw.SizedBox(height: 16),
+            pw.Table.fromTextArray(
+              headers: const ['Product', 'Qty', 'Rate', 'Amount'],
+              headerStyle: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold),
+              headerDecoration: const pw.BoxDecoration(color: PdfColor.fromInt(0xFFFF3D81)),
+              cellPadding: const pw.EdgeInsets.all(8),
+              data: [[widget.productName, '${widget.quantity}', 'INR ${money(widget.price)}', 'INR ${money(widget.total)}']],
+            ),
+            pw.SizedBox(height: 16),
+            pw.Align(
+              alignment: pw.Alignment.centerRight,
+              child: pw.Container(
+                width: 240,
+                padding: const pw.EdgeInsets.all(14),
+                decoration: pw.BoxDecoration(color: const PdfColor.fromInt(0xFFF0FFF7), border: pw.Border.all(color: const PdfColor.fromInt(0xFF00C853))),
+                child: pw.Column(children: [
+                  pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [pw.Text('Subtotal'), pw.Text('INR ${money(widget.total)}')]),
+                  pw.Divider(),
+                  pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
+                    pw.Text('GRAND TOTAL', style: pw.TextStyle(color: const PdfColor.fromInt(0xFF00C853), fontWeight: pw.FontWeight.bold)),
+                    pw.Text('INR ${money(widget.total)}', style: pw.TextStyle(color: const PdfColor.fromInt(0xFF00C853), fontWeight: pw.FontWeight.bold, fontSize: 15)),
+                  ]),
+                ]),
               ),
-              pw.SizedBox(height: 14),
-              pw.Container(
-                width: double.infinity,
-                padding: const pw.EdgeInsets.all(12),
-                decoration: pw.BoxDecoration(
-                  color: const PdfColor.fromInt(0xFFF3F0FF),
-                  border: pw.Border.all(
-                    color: const PdfColor.fromInt(0xFF7C4DFF),
-                  ),
-                ),
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text(
-                      'CUSTOMER',
-                      style: pw.TextStyle(
-                        color: const PdfColor.fromInt(0xFF7C4DFF),
-                        fontWeight: pw.FontWeight.bold,
-                      ),
-                    ),
-                    pw.SizedBox(height: 6),
-                    pw.Text(customerName),
-                    pw.Text(customerPhone),
-                    if (customerAddress.isNotEmpty)
-                      pw.Text(customerAddress),
-                  ],
-                ),
-              ),
-              pw.SizedBox(height: 18),
-              pw.Table.fromTextArray(
-                headers: const ['Product', 'Qty', 'Rate', 'Amount'],
-                headerStyle: pw.TextStyle(
-                  color: PdfColors.white,
-                  fontWeight: pw.FontWeight.bold,
-                ),
-                headerDecoration: const pw.BoxDecoration(
-                  color: PdfColor.fromInt(0xFFFF3D81),
-                ),
-                rowDecoration: const pw.BoxDecoration(
-                  color: PdfColor.fromInt(0xFFFFF8FB),
-                ),
-                cellPadding: const pw.EdgeInsets.all(9),
-                data: [
-                  [
-                    productName,
-                    '$quantity',
-                    'INR ${money(price)}',
-                    'INR ${money(total)}',
-                  ],
-                ],
-              ),
-              pw.SizedBox(height: 18),
-              pw.Align(
-                alignment: pw.Alignment.centerRight,
-                child: pw.Container(
-                  width: 250,
-                  padding: const pw.EdgeInsets.all(14),
-                  decoration: pw.BoxDecoration(
-                    color: const PdfColor.fromInt(0xFFF0FFF7),
-                    border: pw.Border.all(
-                      color: const PdfColor.fromInt(0xFF00C853),
-                    ),
-                  ),
-                  child: pw.Column(
-                    children: [
-                      pw.Row(
-                        mainAxisAlignment:
-                            pw.MainAxisAlignment.spaceBetween,
-                        children: [
-                          pw.Text('Subtotal'),
-                          pw.Text('INR ${money(total)}'),
-                        ],
-                      ),
-                      pw.Divider(),
-                      pw.Row(
-                        mainAxisAlignment:
-                            pw.MainAxisAlignment.spaceBetween,
-                        children: [
-                          pw.Text(
-                            'GRAND TOTAL',
-                            style: pw.TextStyle(
-                              fontWeight: pw.FontWeight.bold,
-                              color: const PdfColor.fromInt(0xFF00C853),
-                            ),
-                          ),
-                          pw.Text(
-                            'INR ${money(total)}',
-                            style: pw.TextStyle(
-                              fontWeight: pw.FontWeight.bold,
-                              color: const PdfColor.fromInt(0xFF00C853),
-                              fontSize: 15,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              pw.Spacer(),
-              pw.Center(
-                child: pw.Text(
-                  'Thank you for your business!',
-                  style: pw.TextStyle(
-                    color: const PdfColor.fromInt(0xFF7C4DFF),
-                    fontWeight: pw.FontWeight.bold,
-                  ),
-                ),
-              ),
-              pw.SizedBox(height: 5),
-              pw.Center(
-                child: pw.Text('RAJA ENTERPRISE'),
-              ),
-            ],
-          );
-        },
+            ),
+            pw.Spacer(),
+            pw.Center(child: pw.Text('Thank you for your business!', style: pw.TextStyle(color: const PdfColor.fromInt(0xFF7C4DFF), fontWeight: pw.FontWeight.bold))),
+            pw.SizedBox(height: 5),
+            pw.Center(child: pw.Text('RAJA ENTERPRISE')),
+          ],
+        ),
       ),
     );
-
     return pdf.save();
   }
 
   Future<void> printBill() async {
     final bytes = await pdfBytes();
-    await Printing.layoutPdf(
-      onLayout: (_) async => bytes,
-    );
+    await Printing.layoutPdf(onLayout: (_) async => bytes);
   }
 
   Future<void> shareBill() async {
     final bytes = await pdfBytes();
-    await Printing.sharePdf(
-      bytes: bytes,
-      filename: '$invoiceNo.pdf',
-    );
+    await Printing.sharePdf(bytes: bytes, filename: '${widget.invoiceNo}.pdf');
   }
 }
 
