@@ -469,7 +469,69 @@ class FirestoreService {
     });
   }
 }
+  // ============================================================
+  // PURCHASE + AUTO STOCK IN
+  // ============================================================
 
+  static Future<void> recordPurchase({
+    required String productId,
+    required String productName,
+    required int quantity,
+    required double purchasePrice,
+    required double sellingPrice,
+    required String supplierName,
+    required String invoiceNo,
+    required DateTime purchaseDate,
+    required String pdfName,
+  }) async {
+    await db.runTransaction((transaction) async {
+      final productRef = products.doc(productId);
+
+      final productSnapshot =
+          await transaction.get(productRef);
+
+      if (!productSnapshot.exists) {
+        throw Exception('Product not found');
+      }
+
+      final data = productSnapshot.data()!;
+
+      final currentStock =
+          (data['stock'] as num?)?.toInt() ?? 0;
+
+      final newStock =
+          currentStock + quantity;
+
+      // Update product stock + prices
+      transaction.update(productRef, {
+        'stock': newStock,
+        'purchasePrice': purchasePrice,
+        'sellingPrice': sellingPrice,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      // Create purchase history
+      final purchaseRef =
+          db.collection('purchases').doc();
+
+      transaction.set(purchaseRef, {
+        'productId': productId,
+        'productName': productName,
+        'quantity': quantity,
+        'purchasePrice': purchasePrice,
+        'sellingPrice': sellingPrice,
+        'totalPurchase':
+            quantity * purchasePrice,
+        'supplierName': supplierName,
+        'invoiceNo': invoiceNo,
+        'purchaseDate':
+            Timestamp.fromDate(purchaseDate),
+        'pdfName': pdfName,
+        'createdAt':
+            FieldValue.serverTimestamp(),
+      });
+    });
+  }
 // ============================================================
 // MAIN PAGE
 // ============================================================
