@@ -3611,6 +3611,21 @@ class MorePage
           16,
         ),
         children: [
+                   moreTile(
+            context,
+            Icons.picture_as_pdf,
+            'Purchase PDF',
+            'Purchase entry & automatic stock IN',
+            AppColors.orange,
+            () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const PurchasePdfPage(),
+                ),
+              );
+            },
+          ),
           const Text(
             'More',
             style:
@@ -4201,6 +4216,495 @@ class _EmptyProducts
       Icons.inventory_2_outlined,
       'No products found',
       'Add your first product to start managing inventory.',
+    );
+  }
+}
+// ============================================================
+// PURCHASE PDF + AUTO STOCK IN PAGE
+// ============================================================
+
+class PurchasePdfPage extends StatefulWidget {
+  const PurchasePdfPage({super.key});
+
+  @override
+  State<PurchasePdfPage> createState() =>
+      _PurchasePdfPageState();
+}
+
+class _PurchasePdfPageState extends State<PurchasePdfPage> {
+  final supplierController = TextEditingController();
+  final invoiceController = TextEditingController();
+  final quantityController = TextEditingController();
+  final purchaseController = TextEditingController();
+  final sellingController = TextEditingController();
+
+  String? selectedProductId;
+  String? selectedProductName;
+  String pdfName = '';
+  DateTime purchaseDate = DateTime.now();
+
+  bool saving = false;
+
+  @override
+  void dispose() {
+    supplierController.dispose();
+    invoiceController.dispose();
+    quantityController.dispose();
+    purchaseController.dispose();
+    sellingController.dispose();
+    super.dispose();
+  }
+
+  Future<void> selectPdf() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['pdf'],
+      withData: false,
+    );
+
+    if (result == null || result.files.isEmpty) {
+      return;
+    }
+
+    setState(() {
+      pdfName = result.files.first.name;
+    });
+  }
+
+  Future<void> selectDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: purchaseDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.dark(
+              primary: AppColors.primary,
+              surface: AppColors.surface,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null) {
+      setState(() {
+        purchaseDate = picked;
+      });
+    }
+  }
+
+  Future<void> savePurchase() async {
+    if (selectedProductId == null ||
+        selectedProductName == null) {
+      _showMessage('Please select a product');
+      return;
+    }
+
+    final quantity =
+        int.tryParse(quantityController.text.trim());
+
+    final purchasePrice =
+        double.tryParse(purchaseController.text.trim());
+
+    final sellingPrice =
+        double.tryParse(sellingController.text.trim());
+
+    if (quantity == null || quantity <= 0) {
+      _showMessage('Enter a valid quantity');
+      return;
+    }
+
+    if (purchasePrice == null || purchasePrice < 0) {
+      _showMessage('Enter a valid purchase price');
+      return;
+    }
+
+    if (sellingPrice == null || sellingPrice < 0) {
+      _showMessage('Enter a valid selling price');
+      return;
+    }
+
+    setState(() {
+      saving = true;
+    });
+
+    try {
+      await FirestoreService.recordPurchase(
+        productId: selectedProductId!,
+        productName: selectedProductName!,
+        quantity: quantity,
+        purchasePrice: purchasePrice,
+        sellingPrice: sellingPrice,
+        supplierName:
+            supplierController.text.trim(),
+        invoiceNo:
+            invoiceController.text.trim(),
+        purchaseDate: purchaseDate,
+        pdfName: pdfName,
+      );
+
+      if (!mounted) return;
+
+      _showMessage(
+        'Purchase saved & stock updated successfully',
+      );
+
+      Navigator.pop(context);
+    } catch (e) {
+      if (!mounted) return;
+
+      _showMessage(
+        'Purchase failed: $e',
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          saving = false;
+        });
+      }
+    }
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  InputDecoration fieldDecoration(
+    String label,
+    IconData icon,
+  ) {
+    return InputDecoration(
+      labelText: label,
+      prefixIcon: Icon(icon),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Purchase PDF'),
+      ),
+
+      body: StreamBuilder<
+          QuerySnapshot<Map<String, dynamic>>>(
+        stream: FirestoreService.productsStream(),
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return Center(
+              child: Text(
+                'Error: ${snapshot.error}',
+              ),
+            );
+          }
+
+          if (snapshot.connectionState ==
+              ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(),
+            );
+          }
+
+          final products =
+              snapshot.data?.docs ?? [];
+
+          return Form(
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+
+                // PDF
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius:
+                        BorderRadius.circular(18),
+                    border: Border.all(
+                      color: AppColors.border,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment:
+                        CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Purchase Invoice PDF',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight:
+                              FontWeight.w800,
+                        ),
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      OutlinedButton.icon(
+                        onPressed: saving
+                            ? null
+                            : selectPdf,
+                        icon: const Icon(
+                          Icons.picture_as_pdf,
+                        ),
+                        label: Text(
+                          pdfName.isEmpty
+                              ? 'Select PDF'
+                              : pdfName,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // Supplier
+                TextField(
+                  controller: supplierController,
+                  decoration: fieldDecoration(
+                    'Supplier Name',
+                    Icons.business,
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                // Invoice
+                TextField(
+                  controller: invoiceController,
+                  decoration: fieldDecoration(
+                    'Invoice No',
+                    Icons.receipt_long,
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                // Product
+                DropdownButtonFormField<String>(
+                  value: selectedProductId,
+                  decoration: fieldDecoration(
+                    'Product',
+                    Icons.inventory_2,
+                  ),
+                  items: products.map((doc) {
+                    final data = doc.data();
+
+                    final name =
+                        data['name']?.toString() ??
+                            'Unnamed Product';
+
+                    return DropdownMenuItem<String>(
+                      value: doc.id,
+                      child: Text(name),
+                    );
+                  }).toList(),
+                  onChanged: saving
+                      ? null
+                      : (value) {
+                          if (value == null) return;
+
+                          final doc = products
+                              .firstWhere(
+                            (item) =>
+                                item.id == value,
+                          );
+
+                          final data = doc.data();
+
+                          setState(() {
+                            selectedProductId =
+                                doc.id;
+
+                            selectedProductName =
+                                data['name']
+                                    ?.toString();
+                          });
+                        },
+                ),
+
+                const SizedBox(height: 12),
+
+                // Quantity
+                TextField(
+                  controller: quantityController,
+                  keyboardType:
+                      TextInputType.number,
+                  decoration: fieldDecoration(
+                    'Quantity',
+                    Icons.numbers,
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                // Purchase Price
+                TextField(
+                  controller: purchaseController,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: fieldDecoration(
+                    'Purchase Price',
+                    Icons.shopping_cart,
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                // Selling Price
+                TextField(
+                  controller: sellingController,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: fieldDecoration(
+                    'Selling Price',
+                    Icons.sell,
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                // Date
+                InkWell(
+                  onTap: saving
+                      ? null
+                      : selectDate,
+                  borderRadius:
+                      BorderRadius.circular(16),
+                  child: InputDecorator(
+                    decoration:
+                        fieldDecoration(
+                      'Purchase Date',
+                      Icons.calendar_month,
+                    ),
+                    child: Text(
+                      '${purchaseDate.day.toString().padLeft(2, '0')}/'
+                      '${purchaseDate.month.toString().padLeft(2, '0')}/'
+                      '${purchaseDate.year}',
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 24),
+
+                // Total preview
+                if (quantityController.text
+                        .isNotEmpty &&
+                    purchaseController.text
+                        .isNotEmpty)
+                  Builder(
+                    builder: (context) {
+                      final qty =
+                          int.tryParse(
+                                quantityController
+                                    .text,
+                              ) ??
+                              0;
+
+                      final rate =
+                          double.tryParse(
+                                purchaseController
+                                    .text,
+                              ) ??
+                              0;
+
+                      final total =
+                          qty * rate;
+
+                      return Container(
+                        padding:
+                            const EdgeInsets.all(16),
+                        decoration:
+                            BoxDecoration(
+                          color:
+                              AppColors.surface2,
+                          borderRadius:
+                              BorderRadius.circular(
+                            16,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment:
+                              MainAxisAlignment
+                                  .spaceBetween,
+                          children: [
+                            const Text(
+                              'Purchase Total',
+                              style: TextStyle(
+                                fontWeight:
+                                    FontWeight.w700,
+                              ),
+                            ),
+                            Text(
+                              '₹${total.toStringAsFixed(2)}',
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight:
+                                    FontWeight.w900,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+
+                const SizedBox(height: 20),
+
+                // Confirm
+                SizedBox(
+                  height: 54,
+                  child: ElevatedButton.icon(
+                    onPressed:
+                        saving ? null : savePurchase,
+                    icon: saving
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child:
+                                CircularProgressIndicator(
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Icon(
+                            Icons.check_circle,
+                          ),
+                    label: Text(
+                      saving
+                          ? 'Saving...'
+                          : 'Confirm Purchase',
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                const Text(
+                  'Confirm করলে stock automatically increase হবে এবং Purchase History-তে entry save হবে.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: AppColors.muted,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 }
