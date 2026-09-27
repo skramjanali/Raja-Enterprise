@@ -468,6 +468,7 @@ class FirestoreService {
       'pdfUploadedAt': FieldValue.serverTimestamp(),
     });
   }
+}
   // ============================================================
   // PURCHASE + AUTO STOCK IN
   // ============================================================
@@ -531,7 +532,6 @@ class FirestoreService {
       });
     });
   }
-}
 // ============================================================
 // MAIN PAGE
 // ============================================================
@@ -4256,18 +4256,17 @@ class _PurchasePdfPageState extends State<PurchasePdfPage> {
   }
 
   Future<void> selectPdf() async {
-    final result = await FilePicker.platform.pickFiles(
+    final file = await FilePicker.pickFile(
       type: FileType.custom,
       allowedExtensions: ['pdf'],
-      withData: false,
     );
 
-    if (result == null || result.files.isEmpty) {
+    if (file == null) {
       return;
     }
 
     setState(() {
-      pdfName = result.files.first.name;
+      pdfName = file.name;
     });
   }
 
