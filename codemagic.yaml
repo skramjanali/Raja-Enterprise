@@ -1,7 +1,9 @@
 workflows:
+
   android_release:
     name: RAJA ENTERPRISE Android APK
     instance_type: mac_mini_m2
+    max_build_duration: 60
 
     environment:
       flutter: stable
@@ -11,7 +13,7 @@ workflows:
         script: |
           echo "flutter.sdk=$HOME/programs/flutter" > "$CM_BUILD_DIR/android/local.properties"
 
-      - name: Generate Gradle wrapper
+      - name: Generate Android Gradle wrapper
         script: |
           rm -rf /tmp/raja_android_template
 
@@ -37,9 +39,66 @@ workflows:
         script: |
           flutter pub get
 
-      - name: Build release APK
+      - name: Build Android APK
         script: |
           flutter build apk --release
 
     artifacts:
       - build/app/outputs/flutter-apk/app-release.apk
+
+
+  ios_unsigned:
+    name: RAJA ENTERPRISE iPhone Test Build
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+
+    environment:
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+
+    scripts:
+      - name: Generate iOS platform
+        script: |
+          flutter create --platforms=ios .
+
+      - name: Get Flutter packages
+        script: |
+          flutter pub get
+
+      - name: Install CocoaPods
+        script: |
+          find ios -name "Podfile" -execdir pod install \;
+
+      - name: Build iOS without signing
+        script: |
+          flutter build ios --release --no-codesign
+
+    artifacts:
+      - build/ios/iphoneos/**/*.app
+      - /tmp/xcodebuild_logs/*.log
+
+
+  windows_release:
+    name: RAJA ENTERPRISE Windows
+    instance_type: windows_x2
+    max_build_duration: 60
+
+    environment:
+      flutter: stable
+
+    scripts:
+      - name: Generate Windows platform
+        script: |
+          flutter create --platforms=windows .
+
+      - name: Get Flutter packages
+        script: |
+          flutter pub get
+
+      - name: Build Windows
+        script: |
+          flutter build windows --release
+
+    artifacts:
+      - build/windows/x64/runner/Release/**
