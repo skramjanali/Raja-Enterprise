@@ -1,0 +1,72 @@
+name: RAJA ENTERPRISE Windows Installer
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-installer:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate Windows platform
+        run: flutter create --platforms=windows .
+
+      - name: Get packages
+        run: flutter pub get
+
+      - name: Build Flutter Windows
+        run: flutter build windows --release
+
+      - name: Install Inno Setup
+        run: choco install innosetup --yes --no-progress
+
+      - name: Create installer script
+        shell: powershell
+        run: |
+          @"
+          [Setup]
+          AppName=RAJA ENTERPRISE
+          AppVersion=1.0.0
+          DefaultDirName={autopf}\RAJA ENTERPRISE
+          DefaultGroupName=RAJA ENTERPRISE
+          OutputDir=installer
+          OutputBaseFilename=RAJA-ENTERPRISE-Setup
+          Compression=lzma
+          SolidCompression=yes
+          ArchitecturesInstallIn64BitMode=x64
+          PrivilegesRequired=admin
+
+          [Files]
+          Source: "build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs
+
+          [Icons]
+          Name: "{group}\RAJA ENTERPRISE"; Filename: "{app}\raja_enterprise_stock.exe"
+          Name: "{commondesktop}\RAJA ENTERPRISE"; Filename: "{app}\raja_enterprise_stock.exe"
+
+          [Run]
+          Filename: "{app}\raja_enterprise_stock.exe"; Description: "Launch RAJA ENTERPRISE"; Flags: nowait postinstall skipifsilent
+          "@ | Out-File -Encoding ASCII installer.iss
+
+      - name: Build Setup.exe
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force installer
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
+
+      - name: Upload RAJA ENTERPRISE Setup
+        uses: actions/upload-artifact@v4
+        with:
+          name: RAJA-ENTERPRISE-Setup
+          path: installer/RAJA-ENTERPRISE-Setup.exe
